@@ -1,0 +1,400 @@
+
+//@version=5
+indicator("[Anil] Structure mapping", "[Anil] Structure", true, 
+ max_bars_back = 5000, max_labels_count = 500, max_lines_count = 500)
+
+//#region variable declaration
+var bool mnUp = na
+var bool mnDn = na
+float mnStrc = na
+var top = high
+var bot = low
+var puUp = high
+var puDn = low
+var L = low
+var H = high
+var idmB = low
+var idmS = high
+var lastH = high
+var lastL = low
+var lastHH = high
+var lastLL = low
+//bar indexes
+var int puUpbar = na
+var int puDnbar = na
+var int idmB_bar = na
+var int idmS_bar = na
+var int Hbar = bar_index
+var int Lbar = bar_index
+var int lastHbar = bar_index
+var int lastLbar = bar_index
+var int lastHHbar = bar_index
+var int lastLLbar = bar_index
+//structure confirmaions
+lastHL = math.max(Hbar, Lbar)
+var bool isBosUp = false
+var bool isBosDn = false
+var bool isCocUp = true
+var bool isCocDn = true
+
+//color
+color transp = color.new(color.gray,100)
+
+//drawing options
+equalHL = input.bool(false,"Use equal H/L", "To calculate valid pullbacks and minor structure", group = "Calculation method")
+
+showHL = input.bool(true, "Mark H/L", group = "H/L marking options")
+HLcolor = input.color(color.gray, "H/L color", group = "H/L marking options")
+
+showMn = input.bool(false, "Mark out internal structure", group = "Internal structue")
+puUpco = input.color(color.red  , "High pivots", inline = "mnco", group = "Internal structue")
+puDnco = input.color(color.green, "Low pivots" , inline = "mnco", group = "Internal structue")
+
+showBC = input.bool(true, "Mark BoS/ChoCH", group = "BoS/Choch")
+bull = input.color(color.green, "Bull color", inline = "BSclor" ,group = "BoS/Choch")
+bear = input.color(color.red  , "Bear color", inline = "BSclor" ,group = "BoS/Choch")
+
+showbarcolor = input.bool(false,"Bar color", group = "Bar color")
+showSCOB = input.bool(true, "Show SCOB pattern", group = "Bar color")
+scobUp = input.color(color.aqua   , "Bullish SCOB", inline = "scob" , group = "Bar color")
+scobDn = input.color(color.fuchsia, "Bearish SCOB", inline = "scob" , group = "Bar color")
+
+showIDM = input.bool(true,"Mark previous IDM", group = "IDM")
+showliveIDM = input.bool(true,"Mark live IDM", group = "IDM")
+idmColor = input.color(color.gray, "IDM color", group = "IDM")
+var label lv_lbl = na
+var line lv_line = na
+
+showSw = input.bool(true, "Show H/L sweeping lines", group = "H/L sweeps")
+markX = input.bool(true, 'Mark "X"', group = "H/L sweeps")
+swColor  = input.color(color.gray, "Sweeping line color", group = "H/L sweeps")
+
+
+
+
+
+string tfInput = input.timeframe(defval = "", title = "Input TF")
+
+float chartTFInMinutes = timeframe.in_seconds() / 60
+float inputTFInMinutes = timeframe.in_seconds(tfInput) / 60
+
+var table t = table.new(position.top_right, 1, 1)
+string txt = "Chart TF: "    + str.tostring(chartTFInMinutes, "#.##### minutes") +"\nInput TF: " + str.tostring(inputTFInMinutes, "#.##### minutes")
+if barstate.isfirst
+    table.cell(t, 0, 0, txt, bgcolor = color.yellow)
+else if barstate.islast
+    table.cell_set_text(t, 0, 0, txt)
+
+if chartTFInMinutes > inputTFInMinutes
+    runtime.error("The chart's timeframe must not be higher than the input's timeframe.")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//max line length
+maxlen = bar_index - na
+
+//#endregion
+
+//#region drawing functions
+mnMark(bool UD) =>
+    if showMn 
+        label.new(
+         x = UD ? puUpbar : puDnbar,
+         y = UD ? puUp : puDn,
+         yloc = UD ? yloc.abovebar : yloc.belowbar,
+         text = "",
+         color = UD ? puUpco : puDnco,
+         style = UD ? label.style_arrowdown : label.style_arrowup,
+         size = size.auto
+         )
+
+
+BoS_ChoCh(bool B_C, bool UpDn) =>
+    [HLbarid, BCprc, BCcolor, BCtxt, BCstyle,Lstyle] = switch
+        B_C == true and UpDn == true => [lastHHbar, lastHH, bull, "BoS"  , label.style_label_down, line.style_solid]
+        B_C == false and UpDn == true => [lastHbar , lastH , bull, "ChoCh", label.style_label_down, line.style_dashed]
+        B_C == false and UpDn == false => [lastLbar , lastL , bear, "ChoCh", label.style_label_up, line.style_dashed]
+        B_C == true and UpDn == false => [lastLLbar, lastLL, bear, "BoS"  , label.style_label_up, line.style_solid]
+    HLbarid := HLbarid < maxlen ? maxlen : HLbarid
+    if showBC
+        line.new(HLbarid , BCprc, bar_index, BCprc, color = BCcolor, style = Lstyle)
+        label.new(
+         int( math.avg(bar_index,HLbarid) ), BCprc
+          ,BCtxt
+          ,color = transp
+          ,style = BCstyle
+          ,textcolor = BCcolor
+          ,size=size.tiny
+          )
+
+
+        
+
+cfHL(bool ifHL) =>
+    [ifHLbarid, HLprc] = switch
+        ifHL => 
+            [Hbar, H]
+        =>
+            [Lbar, L]
+    ifHL_txt = if ifHL
+        if H == lastHH
+            "HH"
+        else
+            "HL"
+    else
+        if L == lastLL
+            "LL"
+        else
+            "LH"
+    cfHLStyle = ifHL ? label.style_label_down : label.style_label_up
+    if showHL
+        label.new(ifHLbarid,HLprc,ifHL_txt, color = transp, textcolor = ifHL ? color.new(color.red,50) : color.new(color.green,50), style = cfHLStyle, size = size.large)
+
+
+    
+sweep(bool swHL, bool swHrLr) =>
+    swStyle = swHL ? label.style_label_down : label.style_label_up
+    [swHLbarid, swprc,scolor , swHL_txt] = switch
+        swHL == true and swHrLr == true => [lastHHbar, lastHH,bull , "BOS - sweep"]
+        swHL == true and swHrLr == false => [lastHbar , lastH ,bull , "Choch - sweep"]
+        swHL == false and swHrLr == true => [lastLbar , lastL ,bear , "Choch - sweep"]
+        swHL == false and swHrLr == false => [lastLLbar, lastLL,bear , "BOS - sweep"]
+    swHLbarid := swHLbarid < maxlen ? maxlen : swHLbarid
+    //draw sweeping line
+    if showSw
+        line.new(swHLbarid,swprc,bar_index,swprc,color = scolor,style = line.style_dotted)
+        if markX
+            label.new(int(math.avg(bar_index,swHLbarid)),swprc, text = swHL_txt, color = transp, textcolor = swColor, style = swStyle, size = size.small)
+
+IDM(bool BS) =>
+    IDMid = BS ? idmB_bar : idmS_bar
+    idmprc = BS ? idmB : idmS
+    idmStyle = BS ? label.style_label_up : label.style_label_down
+    IDMid := IDMid < maxlen ? maxlen : IDMid
+    //draw idm takeout line
+    if showIDM
+        line.new(IDMid,idmprc,bar_index,idmprc,color = idmColor,style = line.style_dotted)
+        label.new(int(math.avg(bar_index,IDMid)),idmprc, "IDM", color = transp, textcolor = idmColor, style = idmStyle,size = size.small)
+        
+//Bar color
+ba_color = if showSCOB
+    if low[1] == puDn and low >= low[1] and close > high[1] and close[1] > low[2]
+        scobUp
+    else if high[1] == puUp and high <= high[1] and close < low[1] and close[1] < high[2]
+        scobDn
+    else if showbarcolor
+        isCocUp?bull:bear
+    else
+        na
+barcolor(ba_color,-1)
+//#endregion
+
+//#region structure mapping
+//update IDM
+if high > lastH
+    if low < bot and close > open
+        if low < idmB and lastHL != Lbar
+            IDM(true)
+            cfHL(true)
+            isBosUp := false
+            L := low
+            Lbar := bar_index
+        idmB := low
+        idmB_bar := bar_index
+    else
+        idmB := puDn
+        idmB_bar := puDnbar
+if low < lastL
+    if high > top and close < open
+        if high > idmS and lastHL != Hbar
+            IDM(false)
+            cfHL(false)
+            isBosDn := false
+            H := high
+            Hbar := bar_index
+        idmS := high
+        idmS_bar := bar_index
+    else
+        idmS := puUp
+        idmS_bar := puUpbar
+
+//Check for IDM and ChoCh
+if isCocUp and lastHL != Lbar
+    if low < idmB
+        if idmB != lastL
+            IDM(true)
+        isBosUp := false
+        if high > lastH and close < open
+            H := high
+            Hbar := bar_index
+        lastH := H
+        lastHbar := Hbar
+        lastHH := H
+        lastHHbar := Hbar
+        cfHL(true)
+        L := low
+        Lbar := bar_index
+else if lastH != lastHH and high > lastH
+    if close > lastH
+        BoS_ChoCh(false,true)
+        cfHL(false)
+        isCocDn := false
+        isBosDn := false
+        isCocUp := true
+    else
+        sweep(true,false)
+
+if isCocDn and lastHL != Hbar
+    if high > idmS
+        if idmS != lastH
+            IDM(false)
+        isBosDn := false
+        if low < lastL and close > open
+            L := low
+            Lbar := bar_index
+        lastL := L
+        lastLbar := Lbar
+        lastLL := L
+        lastLLbar := Lbar
+        cfHL(false)
+        H := high
+        Hbar := bar_index
+else if low < lastL and lastL != lastLL
+    if close < lastL
+        BoS_ChoCh(false,false)
+        cfHL(true)
+        isCocDn := true
+        isCocUp := false
+        isBosUp := false
+    else
+        sweep(false,true)
+
+//Check for BoS
+if isBosUp == false
+    if high > lastHH 
+        if close > lastHH 
+            BoS_ChoCh(true,true)
+            cfHL(false)
+            lastL := L
+            lastLbar := Lbar
+            isCocUp := true
+            isBosUp := true
+            isCocDn := false
+            isBosDn := false
+        else
+            sweep(true,true)
+if isBosDn == false
+    if low < lastLL
+        if close < lastLL
+            BoS_ChoCh(true,false)
+            cfHL(true)
+            lastH := H
+            lastHbar := Hbar
+            isCocUp := false
+            isBosUp := false
+            isCocDn := true
+            isBosDn := true
+        else
+            sweep(false,false)
+//#endregion
+
+//#region internal structure
+if high > top        
+    if low > bot
+        mnDn := false
+    mnUp := true
+if low < bot
+    if high < top
+        mnUp := false
+    mnDn := true
+if mnUp[1] and not mnUp
+    mnMark(true)
+if mnDn[1] and not mnDn
+    mnMark(false)
+
+if high > top
+    puUp := high
+    puUpbar := bar_index
+if low < bot
+    puDn := low
+    puDnbar := bar_index
+    top := high
+    bot := low
+if high > top
+    top := high
+    bot := low
+//#endregion
+
+//#region auto update High and Low vars
+if high > H
+    H := high
+    Hbar := bar_index
+if high > idmS 
+    idmS := high
+    idmS_bar := bar_index
+if high > lastH
+    lastH := high
+    lastHbar := bar_index
+if high > lastHH
+    lastHH := high
+    lastHHbar := bar_index
+
+if low < L
+    L := low
+    Lbar := bar_index
+if low < idmB
+    idmB := low
+    idmB_bar := bar_index
+if low < lastL
+    lastL := low
+    lastLbar := bar_index
+if low < lastLL
+    lastLL := low
+    lastLLbar := bar_index
+
+//#endregion
+
+//#region live IDM
+if barstate.islast
+    if showliveIDM
+        [liveIDM, liveIDMbar] = if isCocUp and lastHL == Hbar
+            [idmB, idmB_bar]
+        else if isCocDn and lastHL == Lbar
+            [idmS, idmS_bar]
+        lv_line := line.new(liveIDMbar, liveIDM, bar_index + 20, liveIDM, color = idmColor, style = line.style_dotted),
+        lv_lbl := label.new(bar_index + 20, liveIDM, "IDM", color = transp, textcolor = idmColor, style = isCocUp ? label.style_label_down : label.style_label_up, size = size.small)
+    else
+        lv_line := na
+        lv_lbl := na
+    line.delete(lv_line[1])
+    label.delete(lv_lbl[1])
+
+    tb = table.new(position.bottom_right,1,1, transp, #1848cc, 1)
+    table.cell(tb,0,0, 'Anil kumar.',0,0, #1848cc)
+//#endregion
+
